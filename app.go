@@ -20,6 +20,10 @@ func logPrint(format string, a ...interface{}) {
 	}
 }
 
+func retResult(a ...interface{}) {
+	fmt.Printf("{ \"timestamp\": %v, \"value\": %v}\n", a...)
+}
+
 func checkError(err error) {
 	if err != nil {
 		logPrint("Error: %s \n", err.Error())
@@ -34,10 +38,11 @@ func logPrintln(a ...interface{}) {
 }
 
 func sendUntil(udpConn net.Conn, endTime int64, interval float64) {
-	count := 0
+	count, secondCount, counted := 0, 0, 0
 	nextTime := time.Now().UnixNano()
-	content := make([]byte, 1024)
+	durationEnd := nextTime + 1e9
 
+	content := make([]byte, 1024)
 	rand.Read(content)
 
 	// start test
@@ -46,10 +51,19 @@ func sendUntil(udpConn net.Conn, endTime int64, interval float64) {
 			nextTime += int64(interval)
 			udpConn.Write(content)
 			count++
+			if durationEnd >= time.Now().UnixNano() {
+				secondCount++
+			} else {
+				retResult(time.Now(), secondCount)
+				counted += secondCount
+				durationEnd += 1e9
+				secondCount = 0
+			}
 		}
 	}
 
-	fmt.Println(count)
+	retResult(time.Now(), count-counted)
+	logPrint("Total send number is: %v \n", count)
 }
 
 func startClient(IP string, port string, speed float64, duration int64) {
@@ -74,7 +88,7 @@ func startClient(IP string, port string, speed float64, duration int64) {
 	`, addStarts, IP+":"+port, addStarts)
 
 	endTime := time.Now().UnixNano() + (duration * 1e9)
-	fmt.Println(speed)
+	logPrintln(speed)
 
 	conn, err := net.Dial("udp", IP+":"+port)
 	defer conn.Close()
@@ -91,19 +105,19 @@ func startClient(IP string, port string, speed float64, duration int64) {
 		checkError(err)
 
 		if string(re.FindAll(buf[:len], 1)[0]) == "OK" {
-			fmt.Println("xixi", buf[:len])
+			logPrintln("Start..")
 			break
 		} else {
-			fmt.Println("RETRY!", buf[:len])
+			logPrintln("RETRY!")
 			time.Sleep(time.Second)
 		}
 	}
 
-	fmt.Println("Start Send Test Packets!")
+	logPrintln("Start Send Test Packets!")
 	if duration != 0 {
 		sendUntil(conn, endTime, 1e9/speed)
 	}
-	fmt.Println("OK")
+	logPrintln("OK")
 
 	for {
 		conn.Write(endSig)
@@ -113,10 +127,10 @@ func startClient(IP string, port string, speed float64, duration int64) {
 		checkError(err)
 
 		if string(re.FindAll(buf[:len], 1)[0]) == "OK" {
-			fmt.Println("END!")
+			logPrintln("END!")
 			break
 		} else {
-			fmt.Println("RETRY!", buf[:len], endSig)
+			logPrintln("RETRY!", buf[:len], endSig)
 		}
 	}
 
@@ -159,7 +173,7 @@ func listenPort(port string, keepAlive bool) {
 		n, remoteAddr, err := conn.ReadFromUDP(data)
 
 		if string(re.FindAll(data[:], 1)[0]) == "END" {
-			fmt.Println(count - counted)
+			retResult(time.Now(), count-counted)
 			_, err = conn.WriteToUDP([]byte("OK"), remoteAddr)
 			if keepAlive {
 				testing, firstTime = false, true
@@ -177,7 +191,7 @@ func listenPort(port string, keepAlive bool) {
 				if durationEnd >= time.Now().UnixNano() {
 					secondCount++
 				} else {
-					fmt.Println(secondCount)
+					retResult(time.Now(), secondCount)
 					counted += secondCount
 					durationEnd += 1e9
 					secondCount = 0
@@ -194,7 +208,7 @@ func listenPort(port string, keepAlive bool) {
 		}
 
 		if err != nil {
-			fmt.Println(string(data[:]), n, remoteAddr)
+			logPrintln(string(data[:]), n, remoteAddr)
 			logPrint("error during read: %s", err)
 		}
 	}
@@ -231,12 +245,12 @@ func main() {
 		listenPort(port, keepAlive)
 	} else if operation == "client" {
 		if errInt == nil && errFloat == nil {
-			fmt.Println(int64Duration, duration)
+			logPrintln(int64Duration, duration)
 			startClient(IP, port, float64V, int64Duration)
 		} else {
-			fmt.Println(errInt, errFloat)
+			logPrintln(errInt, errFloat)
 		}
 	} else {
-		fmt.Println("Please Enter Correct Param Before You Start Test!")
+		logPrintln("Please Enter Correct Param Before You Start Test!")
 	}
 }
