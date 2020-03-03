@@ -2,7 +2,9 @@ const { spawn, execFile } = require('child_process');
 
 
 let subprocess = execFile('udpTest.exe', [
-  "-l"
+  "-l",
+  "-o",
+  "client"
 ], {
   // detached: true,
   stdio: ['ignore', 1, 2] // ['ignore', process.stdout, process.stderr]
@@ -10,7 +12,10 @@ let subprocess = execFile('udpTest.exe', [
 
 
 subprocess.stdout.on("data", (data) => {
-  console.log("xiix", data ,"22")
+  // console.log(data )
+})
+subprocess.stderr.on("data", (err) => {
+  console.log("xiix", err ,"22")
 })
 
 // subprocess.unref()
