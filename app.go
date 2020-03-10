@@ -10,6 +10,7 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -27,8 +28,13 @@ func retResult(a ...interface{}) {
 
 func checkError(err error) {
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "\nERR: %s", err.Error())
-		logPrint("Error: %s \n", err.Error())
+
+		x := fmt.Sprintf("%s", err)
+		if strings.Contains(x, "Only one usage of each socket address") {
+			fmt.Print("Error: Port occupied")
+		} else {
+			fmt.Printf("Error: %s \n", err.Error())
+		}
 		os.Exit(1)
 	}
 }
@@ -99,7 +105,7 @@ func startClient(IP string, port string, speed float64, duration int64, maxTries
 	}
 
 	// define a channel storage bool, size one
-
+	fmt.Print("Starting")
 	// send start
 	// Loop:
 	for {
@@ -115,7 +121,7 @@ func startClient(IP string, port string, speed float64, duration int64, maxTries
 			logPrintln("Retry!")
 		} else {
 			if string(re.FindAll(buf[:len], 1)[0]) == "OK" {
-				logPrintln("Start..")
+				fmt.Print("Started")
 				endTime = time.Now().UnixNano() + (duration * 1e9)
 				logPrintln(speed)
 				break
@@ -130,6 +136,7 @@ func startClient(IP string, port string, speed float64, duration int64, maxTries
 		sendUntil(conn, endTime, 1e9/speed)
 	}
 	logPrintln("OK")
+	fmt.Print("Ending")
 
 	for {
 		conn.Write(endSig)
@@ -147,7 +154,7 @@ func startClient(IP string, port string, speed float64, duration int64, maxTries
 			logPrintln("Retry!")
 		} else {
 			if string(re.FindAll(buf[:len], 1)[0]) == "OK" {
-				logPrintln("END!")
+				fmt.Print("Ended")
 				break
 			}
 		}
@@ -186,6 +193,8 @@ func listenPort(port string, keepAlive bool, maxTries int) {
 
 	conn, err := net.ListenUDP("udp", udpAddr)
 	checkError(err)
+
+	fmt.Print("Started")
 
 	for {
 		data := make([]byte, 1024)
@@ -247,7 +256,7 @@ func main() {
 	var maxTries int
 	var keepAlive bool
 
-	flag.StringVar(&operation, "o", "sever", "operation you want to call! [ sever | client ]")
+	flag.StringVar(&operation, "o", "server", "operation you want to call! [ server | client ]")
 	flag.IntVar(&maxTries, "t", 10, "maxTries when send start signal or end siganal! [ Client Only ]")
 	flag.StringVar(&v, "v", "100.0", "Test Bandwith KB/s [ Client Only ]")
 	flag.Int64Var(&duration, "d", 10, "Duration of test [ Client Only ]")
@@ -265,7 +274,7 @@ func main() {
 	******************************************************
 	`)
 
-	if operation == "sever" {
+	if operation == "server" {
 		listenPort(port, keepAlive, maxTries)
 	} else if operation == "client" {
 		if errFloat == nil {
