@@ -45,6 +45,12 @@ func logPrintln(a ...interface{}) {
 	}
 }
 
+func removeSpace(content []byte) string {
+	pattern := "([^\u0000]*)"
+	re, _ := regexp.Compile(pattern)
+	return string(re.FindAll(content[:], 1)[0])
+}
+
 func sendUntil(udpConn net.Conn, endTime int64, interval float64) {
 	count, secondCount, counted := 0, 0, 0
 	nextTime := time.Now().UnixNano()
@@ -74,13 +80,61 @@ func sendUntil(udpConn net.Conn, endTime int64, interval float64) {
 	logPrint("Total send number is: %v \n", count)
 }
 
-func startClient(IP string, port string, speed float64, duration int64, maxTries int) {
+func replyUntil(udpConn *net.UDPConn, remoteAddr *net.UDPAddr, endTime int64, interval float64) {
+	count, secondCount, counted := 0, 0, 0
+	nextTime := time.Now().UnixNano()
+	durationEnd := nextTime + 1e9
+
+	content := make([]byte, 1024)
+	rand.Read(content)
+
+	// start test
+	for endTime >= time.Now().UnixNano() {
+		if time.Now().UnixNano() >= nextTime {
+			nextTime += int64(interval)
+			udpConn.WriteToUDP(content, remoteAddr)
+			count++
+			if durationEnd >= time.Now().UnixNano() {
+				secondCount++
+			} else {
+				retResult(time.Now(), secondCount)
+				counted += secondCount
+				durationEnd += 1e9
+				secondCount = 0
+			}
+		}
+	}
+
+	retResult(time.Now(), count-counted)
+	logPrint("Total send number is: %v \n", count)
+}
+
+func sendSignal(signal []byte, maxTries int, udpConn net.Conn) {
+	for {
+		udpConn.Write(signal)
+		buf := make([]byte, 1024)
+		udpConn.SetReadDeadline(time.Now().Add(time.Second * 2))
+		_, err := udpConn.Read(buf)
+		maxTries--
+		if maxTries < 0 {
+			checkError(errors.New("Maxtries exceed"))
+		}
+		if err != nil {
+			logPrintln("Retry!")
+		} else {
+			fmt.Println(removeSpace(buf))
+			if removeSpace(buf) == "OK" {
+				break
+			}
+		}
+	}
+}
+
+func startClient(IP string, port string, speed float64, duration int64, special bool, maxTries int) {
 
 	startSig := []byte("QOS")
+	specialStartSig := []byte(fmt.Sprintf("QOS,%v,%v", speed, duration))
 	endSig := []byte("END")
-	startTries, endTries := maxTries, maxTries
-	pattern := "([^\u0000]*)"
-	re, _ := regexp.Compile(pattern)
 
 	portLen := bytes.Count([]byte(port+IP), nil)
 	addStarts := ""
@@ -95,7 +149,6 @@ func startClient(IP string, port string, speed float64, duration int64, maxTries
 	********************%v
 	`, addStarts, IP+":"+port, addStarts)
 
-	endTime := time.Now().UnixNano() + (duration * 1e9)
 	logPrintln(speed)
 
 	conn, err := net.Dial("udp", IP+":"+port)
@@ -105,63 +158,75 @@ func startClient(IP string, port string, speed float64, duration int64, maxTries
 	}
 
 	// define a channel storage bool, size one
-	fmt.Print("Starting")
-	// send start
-	// Loop:
-	for {
-		conn.Write(startSig)
-		buf := make([]byte, 1024)
-		conn.SetReadDeadline(time.Now().Add(time.Second))
-		len, err := conn.Read(buf)
-		startTries--
-		if startTries < 0 {
-			checkError(errors.New("Maxtries exceed"))
-		}
-		if err != nil {
-			logPrintln("Retry!")
-		} else {
-			if string(re.FindAll(buf[:len], 1)[0]) == "OK" {
-				fmt.Print("Started")
-				endTime = time.Now().UnixNano() + (duration * 1e9)
-				logPrintln(speed)
-				break
+
+	if special {
+		// 内-外网模式
+		listenTries := maxTries
+		count, counted := 0, 0
+		secondCount := 0
+		firstTime := true
+		var durationEnd int64
+
+		fmt.Print("Starting")
+		// send start
+		sendSignal(specialStartSig, maxTries, conn)
+		fmt.Print("Started")
+		logPrintln("Start Send Test Packets!")
+
+		for {
+
+			data := make([]byte, 1024)
+			conn.SetReadDeadline(time.Now().Add(time.Second * 2))
+			_, err := conn.Read(data)
+
+			if err != nil {
+				listenTries--
+				if listenTries < 0 {
+					checkError(errors.New("Maxtries exceed"))
+				}
+				logPrint("*")
+			} else {
+				if removeSpace(data) == "END" {
+					retResult(time.Now(), count-counted)
+					break
+				} else {
+					count++
+					if firstTime {
+						durationEnd = time.Now().UnixNano() + 1e9
+						firstTime = false
+					}
+					if durationEnd >= time.Now().UnixNano() {
+						secondCount++
+					} else {
+						retResult(time.Now(), secondCount)
+						counted += secondCount
+						durationEnd += 1e9
+						secondCount = 0
+					}
+				}
 			}
 		}
-	}
-
-	logPrintln("Start Send Test Packets!")
-
-	if duration != 0 {
-		// go sendUntil(conn, endTime, 1e9/speed)
-		sendUntil(conn, endTime, 1e9/speed)
-	}
-	logPrintln("OK")
-	fmt.Print("Ending")
-
-	for {
-		conn.Write(endSig)
-
-		buf := make([]byte, 1024)
-		conn.SetReadDeadline(time.Now().Add(time.Second))
-		len, err := conn.Read(buf)
-
-		endTries--
-		if endTries < 0 {
-			checkError(errors.New("Maxtries exceed"))
+	} else {
+		fmt.Print("Starting")
+		// send start
+		sendSignal(startSig, maxTries, conn)
+		fmt.Print("Started")
+		logPrintln("Start Send Test Packets!")
+		// 非内-外网模式
+		endTime := time.Now().UnixNano() + (duration * 1e9)
+		if duration != 0 {
+			sendUntil(conn, endTime, 1e9/speed)
 		}
 
-		if err != nil {
-			logPrintln("Retry!")
-		} else {
-			if string(re.FindAll(buf[:len], 1)[0]) == "OK" {
-				fmt.Print("Ended")
-				break
-			}
-		}
+		logPrintln("OK")
+		fmt.Print("Ending")
+
+		sendSignal(endSig, maxTries, conn)
+		fmt.Print("Ended!")
 	}
 }
 
-func listenPort(port string, keepAlive bool, maxTries int) {
+func listenPort(port string, keepAlive bool, special bool, maxTries int) {
 
 	count := 0
 	testing := false
@@ -196,29 +261,103 @@ func listenPort(port string, keepAlive bool, maxTries int) {
 
 	fmt.Print("Started")
 
-	for {
-		data := make([]byte, 1024)
-		conn.SetReadDeadline(time.Now().Add(time.Second * 2))
-		_, remoteAddr, err := conn.ReadFromUDP(data)
+	// 内-外网模式
+	if special {
 
-		if err != nil {
-			listenTries--
-			if listenTries < 0 {
-				checkError(errors.New("Maxtries exceed"))
-			}
-			logPrint("=")
-		} else {
-			if string(re.FindAll(data[:], 1)[0]) == "END" {
-				retResult(time.Now(), count-counted)
-				_, err = conn.WriteToUDP([]byte("OK"), remoteAddr)
-				if keepAlive {
-					testing, firstTime = false, true
-					count, counted, secondCount = 0, 0, 0
-				} else {
-					break
+		var speed float64
+		var duration int64
+
+		// 等待握手
+		for {
+			data := make([]byte, 1024)
+			conn.SetReadDeadline(time.Now().Add(time.Second * 2))
+			_, remoteAddr, err := conn.ReadFromUDP(data)
+
+			if err != nil {
+				listenTries--
+				if listenTries < 0 {
+					checkError(errors.New("Maxtries exceed"))
 				}
+				logPrint("*")
 			} else {
-				if testing {
+				missionStr := removeSpace(data)
+				if strings.Index(missionStr, "QOS") != -1 {
+					if testing == false {
+
+						params := strings.Split(missionStr, ",")
+						fmt.Println(params, missionStr)
+						speed, err = strconv.ParseFloat(params[1], 64)
+						checkError(err)
+						duration, err = strconv.ParseInt(params[2], 10, 64)
+						checkError(err)
+
+						fmt.Println(speed, duration)
+						_, err = conn.WriteToUDP([]byte("OK"), remoteAddr)
+						checkError(err)
+						firstTime = true
+						testing = true
+						replyUntil(conn, remoteAddr, time.Now().UnixNano()+(duration*1e9), 1e9/speed)
+
+						// end test
+						_, err = conn.WriteToUDP([]byte("END"), remoteAddr)
+						checkError(err)
+
+						if keepAlive {
+							testing, firstTime = false, true
+							count, counted, secondCount = 0, 0, 0
+							continue
+						} else {
+							break
+						}
+
+					} else {
+						_, err = conn.WriteToUDP([]byte("Testing Anothor Mission, Please Wait!"), remoteAddr)
+						checkError(err)
+					}
+				}
+			}
+		}
+
+	} else {
+		// 非内-外网模式
+		for {
+			data := make([]byte, 1024)
+			conn.SetReadDeadline(time.Now().Add(time.Second * 2))
+			_, remoteAddr, err := conn.ReadFromUDP(data)
+
+			if err != nil {
+				listenTries--
+				if listenTries < 0 {
+					checkError(errors.New("Maxtries exceed"))
+				}
+				logPrint("*")
+			} else {
+				if string(re.FindAll(data[:], 1)[0]) == "END" {
+					retResult(time.Now(), count-counted)
+					_, err = conn.WriteToUDP([]byte("OK"), remoteAddr)
+					if keepAlive {
+						testing, firstTime = false, true
+						count, counted, secondCount = 0, 0, 0
+						continue
+					} else {
+						break
+					}
+				}
+
+				if string(re.FindAll(data[:], 1)[0]) == "QOS" {
+
+					if testing == false {
+						_, err = conn.WriteToUDP([]byte("OK"), remoteAddr)
+						checkError(err)
+						firstTime = true
+						testing = true
+					} else {
+						_, err = conn.WriteToUDP([]byte("Testing Anothor Mission, Please Wait!"), remoteAddr)
+						checkError(err)
+					}
+				}
+
+				if testing && (string(re.FindAll(data[:], 1)[0]) != "QOS") {
 					count++
 					if firstTime {
 						durationEnd = time.Now().UnixNano() + 1e9
@@ -232,19 +371,13 @@ func listenPort(port string, keepAlive bool, maxTries int) {
 						durationEnd += 1e9
 						secondCount = 0
 					}
-				} else if string(re.FindAll(data[:], 1)[0]) == "QOS" {
-					_, err = conn.WriteToUDP([]byte("OK"), remoteAddr)
-					checkError(err)
-					firstTime = true
-					testing = true
-				} else if testing {
-					_, err = conn.WriteToUDP([]byte("Testing Anothor Mission, Please Wait!"), remoteAddr)
-					checkError(err)
 				}
 			}
 		}
 	}
 }
+
+// 穿局域网时，客户端发送局域网穿透模式信号，并附带参数信息
 
 func main() {
 
@@ -255,6 +388,7 @@ func main() {
 	var port string
 	var maxTries int
 	var keepAlive bool
+	var special bool
 
 	flag.StringVar(&operation, "o", "server", "operation you want to call! [ server | client ]")
 	flag.IntVar(&maxTries, "t", 10, "maxTries when send start signal or end siganal! [ Client Only ]")
@@ -264,6 +398,7 @@ func main() {
 	flag.StringVar(&port, "p", "2333", "target port")
 	flag.BoolVar(&keepAlive, "a", false, "Keep sever end alive!")
 	flag.BoolVar(&showLog, "l", false, "Show log")
+	flag.BoolVar(&special, "s", false, "Special mode for accross the local network")
 	flag.Parse()
 
 	float64V, errFloat := strconv.ParseFloat(v, 64)
@@ -275,10 +410,10 @@ func main() {
 	`)
 
 	if operation == "server" {
-		listenPort(port, keepAlive, maxTries)
+		listenPort(port, keepAlive, special, maxTries)
 	} else if operation == "client" {
 		if errFloat == nil {
-			startClient(IP, port, float64V, duration, maxTries)
+			startClient(IP, port, float64V, duration, special, maxTries)
 		} else {
 			logPrintln(errFloat)
 		}
