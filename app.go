@@ -31,7 +31,7 @@ func checkError(err error) {
 
 		x := fmt.Sprintf("%s", err)
 		if strings.Contains(x, "Only one usage of each socket address") {
-			fmt.Print("Error: Port occupied")
+			logPrint("Error: Port occupied")
 		} else {
 			fmt.Printf("Error: %s \n", err.Error())
 		}
@@ -122,7 +122,6 @@ func sendSignal(signal []byte, maxTries int, udpConn net.Conn) {
 		if err != nil {
 			logPrintln("Retry!")
 		} else {
-			fmt.Println(removeSpace(buf))
 			if removeSpace(buf) == "OK" {
 				break
 			}
@@ -167,10 +166,10 @@ func startClient(IP string, port string, speed float64, duration int64, special 
 		firstTime := true
 		var durationEnd int64
 
-		fmt.Print("Starting")
+		logPrintln("Starting")
 		// send start
 		sendSignal(specialStartSig, maxTries, conn)
-		fmt.Print("Started")
+		logPrint("Started")
 		logPrintln("Start Send Test Packets!")
 
 		for {
@@ -207,10 +206,10 @@ func startClient(IP string, port string, speed float64, duration int64, special 
 			}
 		}
 	} else {
-		fmt.Print("Starting")
+		logPrint("Starting")
 		// send start
 		sendSignal(startSig, maxTries, conn)
-		fmt.Print("Started")
+		logPrint("Started")
 		logPrintln("Start Send Test Packets!")
 		// 非内-外网模式
 		endTime := time.Now().UnixNano() + (duration * 1e9)
@@ -219,10 +218,10 @@ func startClient(IP string, port string, speed float64, duration int64, special 
 		}
 
 		logPrintln("OK")
-		fmt.Print("Ending")
+		logPrint("Ending")
 
 		sendSignal(endSig, maxTries, conn)
-		fmt.Print("Ended!")
+		logPrint("Ended!")
 	}
 }
 
@@ -259,7 +258,7 @@ func listenPort(port string, keepAlive bool, special bool, maxTries int) {
 	conn, err := net.ListenUDP("udp", udpAddr)
 	checkError(err)
 
-	fmt.Print("Started")
+	logPrint("Started")
 
 	// 内-外网模式
 	if special {
@@ -285,13 +284,11 @@ func listenPort(port string, keepAlive bool, special bool, maxTries int) {
 					if testing == false {
 
 						params := strings.Split(missionStr, ",")
-						fmt.Println(params, missionStr)
 						speed, err = strconv.ParseFloat(params[1], 64)
 						checkError(err)
 						duration, err = strconv.ParseInt(params[2], 10, 64)
 						checkError(err)
 
-						fmt.Println(speed, duration)
 						_, err = conn.WriteToUDP([]byte("OK"), remoteAddr)
 						checkError(err)
 						firstTime = true
