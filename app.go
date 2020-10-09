@@ -14,6 +14,9 @@ import (
 	"time"
 )
 
+// PACKAGESIZE : A const of package size
+const PACKAGESIZE int = 992
+
 var showLog bool
 
 func logPrint(format string, a ...interface{}) {
@@ -56,7 +59,7 @@ func sendUntil(udpConn net.Conn, endTime int64, interval float64) {
 	nextTime := time.Now().UnixNano()
 	durationEnd := nextTime + 1e9
 
-	content := make([]byte, 1024)
+	content := make([]byte, PACKAGESIZE)
 	rand.Read(content)
 
 	// start test
@@ -85,7 +88,7 @@ func replyUntil(udpConn *net.UDPConn, remoteAddr *net.UDPAddr, endTime int64, in
 	nextTime := time.Now().UnixNano()
 	durationEnd := nextTime + 1e9
 
-	content := make([]byte, 1024)
+	content := make([]byte, PACKAGESIZE)
 	rand.Read(content)
 
 	// start test
@@ -112,7 +115,7 @@ func replyUntil(udpConn *net.UDPConn, remoteAddr *net.UDPAddr, endTime int64, in
 func sendSignal(signal []byte, maxTries int, udpConn net.Conn) {
 	for {
 		udpConn.Write(signal)
-		buf := make([]byte, 1024)
+		buf := make([]byte, PACKAGESIZE)
 		udpConn.SetReadDeadline(time.Now().Add(time.Second * 2))
 		_, err := udpConn.Read(buf)
 		maxTries--
@@ -174,7 +177,7 @@ func startClient(IP string, port string, speed float64, duration int64, special 
 
 		for {
 
-			data := make([]byte, 1024)
+			data := make([]byte, PACKAGESIZE)
 			conn.SetReadDeadline(time.Now().Add(time.Second * 2))
 			_, err := conn.Read(data)
 
@@ -268,7 +271,7 @@ func listenPort(port string, keepAlive bool, special bool, maxTries int) {
 
 		// 等待握手
 		for {
-			data := make([]byte, 1024)
+			data := make([]byte, PACKAGESIZE)
 			conn.SetReadDeadline(time.Now().Add(time.Second * 2))
 			_, remoteAddr, err := conn.ReadFromUDP(data)
 
@@ -318,7 +321,7 @@ func listenPort(port string, keepAlive bool, special bool, maxTries int) {
 	} else {
 		// 非内-外网模式
 		for {
-			data := make([]byte, 1024)
+			data := make([]byte, PACKAGESIZE)
 			conn.SetReadDeadline(time.Now().Add(time.Second * 2))
 			_, remoteAddr, err := conn.ReadFromUDP(data)
 
