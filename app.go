@@ -15,7 +15,7 @@ import (
 )
 
 // PACKAGESIZE : A const of package size
-const PACKAGESIZE int = 992
+const PACKAGESIZE int = 1016
 
 var showLog bool
 
