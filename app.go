@@ -54,62 +54,8 @@ func removeSpace(content []byte) string {
 	return string(re.FindAll(content[:], 1)[0])
 }
 
-func sendUntil(udpConn net.Conn, endTime int64, interval float64) {
-	count, secondCount, counted := 0, 0, 0
-	nextTime := time.Now().UnixNano()
-	durationEnd := nextTime + 1e9
-
-	content := make([]byte, PACKAGESIZE)
-	rand.Read(content)
-
-	// start test
-	for endTime >= time.Now().UnixNano() {
-		if time.Now().UnixNano() >= nextTime {
-			nextTime += int64(interval)
-			udpConn.Write(content)
-			count++
-			if durationEnd >= time.Now().UnixNano() {
-				secondCount++
-			} else {
-				retResult(time.Now(), secondCount)
-				counted += secondCount
-				durationEnd += 1e9
-				secondCount = 0
-			}
-		}
-	}
-
-	retResult(time.Now(), count-counted)
-	logPrint("Total send number is: %v \n", count)
-}
-
 func replyUntil(udpConn *net.UDPConn, remoteAddr *net.UDPAddr, endTime int64, interval float64) {
-	count, secondCount, counted := 0, 0, 0
-	nextTime := time.Now().UnixNano()
-	durationEnd := nextTime + 1e9
 
-	content := make([]byte, PACKAGESIZE)
-	rand.Read(content)
-
-	// start test
-	for endTime >= time.Now().UnixNano() {
-		if time.Now().UnixNano() >= nextTime {
-			nextTime += int64(interval)
-			udpConn.WriteToUDP(content, remoteAddr)
-			count++
-			if durationEnd >= time.Now().UnixNano() {
-				secondCount++
-			} else {
-				retResult(time.Now(), secondCount)
-				counted += secondCount
-				durationEnd += 1e9
-				secondCount = 0
-			}
-		}
-	}
-
-	retResult(time.Now(), count-counted)
-	logPrint("Total send number is: %v \n", count)
 }
 
 func sendSignal(signal []byte, maxTries int, udpConn net.Conn) {
@@ -177,6 +123,7 @@ func startClient(IP string, port string, speed float64, duration int64, special 
 
 		for {
 
+			// 从服务端接收数据
 			data := make([]byte, PACKAGESIZE)
 			conn.SetReadDeadline(time.Now().Add(time.Second * 2))
 			_, err := conn.Read(data)
@@ -189,7 +136,10 @@ func startClient(IP string, port string, speed float64, duration int64, special 
 				logPrint("*")
 			} else {
 				if removeSpace(data) == "END" {
-					retResult(time.Now(), count-counted)
+					// 如果没有足量显示就再打印最后这次，有就不再打印
+					if duration >= 1 {
+						retResult(time.Now(), count-counted)
+					}
 					break
 				} else {
 					count++
@@ -200,6 +150,7 @@ func startClient(IP string, port string, speed float64, duration int64, special 
 					if durationEnd >= time.Now().UnixNano() {
 						secondCount++
 					} else {
+						duration-- // 没计数一次，减去一次
 						retResult(time.Now(), secondCount)
 						counted += secondCount
 						durationEnd += 1e9
@@ -209,15 +160,50 @@ func startClient(IP string, port string, speed float64, duration int64, special 
 			}
 		}
 	} else {
+
 		logPrint("Starting")
 		// send start
 		sendSignal(startSig, maxTries, conn)
 		logPrint("Started")
 		logPrintln("Start Send Test Packets!")
 		// 非内-外网模式
-		endTime := time.Now().UnixNano() + (duration * 1e9)
+
 		if duration != 0 {
-			sendUntil(conn, endTime, 1e9/speed)
+			endTime := time.Now().UnixNano() + (duration * 1e9)
+
+			count, secondCount, counted := 0, 0, 0
+			nextTime := time.Now().UnixNano()
+			durationEnd := nextTime + 1e9
+
+			content := make([]byte, PACKAGESIZE)
+			rand.Read(content)
+
+			// 开始发包
+			for endTime >= time.Now().UnixNano() {
+				if time.Now().UnixNano() >= nextTime {
+					nextTime += int64(1e9 / speed)
+					ok, err := conn.Write(content)
+					if err != nil {
+						logPrintln(ok, err)
+					}
+					count++
+					if durationEnd >= time.Now().UnixNano() {
+						secondCount++
+					} else {
+						duration--
+						retResult(time.Now(), secondCount)
+						counted += secondCount
+						durationEnd += 1e9
+						secondCount = 0
+					}
+				}
+			}
+
+			// 当次数显示未满的时候再打印最后这次
+			if duration >= 1 {
+				retResult(time.Now(), count-counted)
+			}
+			logPrint("Total send number is: %v \n", count)
 		}
 
 		logPrintln("OK")
@@ -296,7 +282,37 @@ func listenPort(port string, keepAlive bool, special bool, maxTries int) {
 						checkError(err)
 						firstTime = true
 						testing = true
-						replyUntil(conn, remoteAddr, time.Now().UnixNano()+(duration*1e9), 1e9/speed)
+
+						count, secondCount, counted := 0, 0, 0
+						nextTime := time.Now().UnixNano()
+						durationEnd := nextTime + 1e9
+						endTime := time.Now().UnixNano() + (duration * 1e9)
+
+						content := make([]byte, PACKAGESIZE)
+						rand.Read(content)
+
+						// start test
+						for endTime >= time.Now().UnixNano() {
+							if time.Now().UnixNano() >= nextTime {
+								nextTime += int64(1e9 / speed)
+								conn.WriteToUDP(content, remoteAddr)
+								count++
+								if durationEnd >= time.Now().UnixNano() {
+									secondCount++
+								} else {
+									duration--
+									retResult(time.Now(), secondCount)
+									counted += secondCount
+									durationEnd += 1e9
+									secondCount = 0
+								}
+							}
+						}
+
+						if duration >= 1 {
+							retResult(time.Now(), count-counted)
+						}
+						logPrint("Total send number is: %v \n", count)
 
 						// end test
 						_, err = conn.WriteToUDP([]byte("END"), remoteAddr)
