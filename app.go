@@ -14,10 +14,22 @@ import (
 	"time"
 )
 
+// 统一时间单位为秒，并且强制使所有结果的时间不会重复
+
 // PACKAGESIZE : A const of package size
 const PACKAGESIZE int = 1016
 
 var showLog bool
+
+func timeCheck(preTime uint64, currentTime uint64) {
+
+}
+
+func logPrintln(a ...interface{}) {
+	if showLog {
+		fmt.Println(a...)
+	}
+}
 
 func logPrint(format string, a ...interface{}) {
 	if showLog {
@@ -25,13 +37,17 @@ func logPrint(format string, a ...interface{}) {
 	}
 }
 
-func retResult(a ...interface{}) {
-	fmt.Printf("{ \"timestamp\": %v, \"value\": %v}\n", a...)
+func retJSONResult(preTimeStamp *int64, value int) {
+	currentTime := time.Now().Unix()
+	if currentTime-*preTimeStamp == 0 { // 如果这两个时间没差一秒就强行加一秒
+		currentTime++
+	}
+	fmt.Printf("{ \"timestamp\": \"%v\", \"value\": %v}\n", currentTime, value)
+	*preTimeStamp = currentTime
 }
 
 func checkError(err error) {
 	if err != nil {
-
 		x := fmt.Sprintf("%s", err)
 		if strings.Contains(x, "Only one usage of each socket address") {
 			logPrint("Error: Port occupied")
@@ -42,20 +58,10 @@ func checkError(err error) {
 	}
 }
 
-func logPrintln(a ...interface{}) {
-	if showLog {
-		fmt.Println(a...)
-	}
-}
-
 func removeSpace(content []byte) string {
 	pattern := "([^\u0000]*)"
 	re, _ := regexp.Compile(pattern)
 	return string(re.FindAll(content[:], 1)[0])
-}
-
-func replyUntil(udpConn *net.UDPConn, remoteAddr *net.UDPAddr, endTime int64, interval float64) {
-
 }
 
 func sendSignal(signal []byte, maxTries int, udpConn net.Conn) {
@@ -80,7 +86,6 @@ func sendSignal(signal []byte, maxTries int, udpConn net.Conn) {
 
 func startClient(IP string, port string, speed float64, duration int64, special bool, maxTries int) {
 
-	startSig := []byte("QOS")
 	specialStartSig := []byte(fmt.Sprintf("QOS,%v,%v", speed, duration))
 	endSig := []byte("END")
 
@@ -105,8 +110,6 @@ func startClient(IP string, port string, speed float64, duration int64, special 
 		os.Exit(1)
 	}
 
-	// define a channel storage bool, size one
-
 	if special {
 		// 内-外网模式
 		listenTries := maxTries
@@ -120,6 +123,9 @@ func startClient(IP string, port string, speed float64, duration int64, special 
 		sendSignal(specialStartSig, maxTries, conn)
 		logPrint("Started")
 		logPrintln("Start Send Test Packets!")
+
+		// 开始后定义第一次时间戳
+		var preTimeStamp int64
 
 		for {
 
@@ -138,7 +144,7 @@ func startClient(IP string, port string, speed float64, duration int64, special 
 				if removeSpace(data) == "END" {
 					// 如果没有足量显示就再打印最后这次，有就不再打印
 					if duration >= 1 {
-						retResult(time.Now(), count-counted)
+						retJSONResult(&preTimeStamp, count-counted)
 					}
 					break
 				} else {
@@ -150,8 +156,8 @@ func startClient(IP string, port string, speed float64, duration int64, special 
 					if durationEnd >= time.Now().UnixNano() {
 						secondCount++
 					} else {
-						duration-- // 没计数一次，减去一次
-						retResult(time.Now(), secondCount)
+						duration-- // 每计数一次，减去一次
+						retJSONResult(&preTimeStamp, secondCount)
 						counted += secondCount
 						durationEnd += 1e9
 						secondCount = 0
@@ -163,7 +169,7 @@ func startClient(IP string, port string, speed float64, duration int64, special 
 
 		logPrint("Starting")
 		// send start
-		sendSignal(startSig, maxTries, conn)
+		sendSignal(specialStartSig, maxTries, conn)
 		logPrint("Started")
 		logPrintln("Start Send Test Packets!")
 		// 非内-外网模式
@@ -178,6 +184,8 @@ func startClient(IP string, port string, speed float64, duration int64, special 
 			content := make([]byte, PACKAGESIZE)
 			rand.Read(content)
 
+			var preTimeStamp int64
+
 			// 开始发包
 			for endTime >= time.Now().UnixNano() {
 				if time.Now().UnixNano() >= nextTime {
@@ -191,7 +199,7 @@ func startClient(IP string, port string, speed float64, duration int64, special 
 						secondCount++
 					} else {
 						duration--
-						retResult(time.Now(), secondCount)
+						retJSONResult(&preTimeStamp, secondCount)
 						counted += secondCount
 						durationEnd += 1e9
 						secondCount = 0
@@ -201,7 +209,7 @@ func startClient(IP string, port string, speed float64, duration int64, special 
 
 			// 当次数显示未满的时候再打印最后这次
 			if duration >= 1 {
-				retResult(time.Now(), count-counted)
+				retJSONResult(&preTimeStamp, count-counted)
 			}
 			logPrint("Total send number is: %v \n", count)
 		}
@@ -216,6 +224,9 @@ func startClient(IP string, port string, speed float64, duration int64, special 
 
 func listenPort(port string, keepAlive bool, special bool, maxTries int) {
 
+	var speed float64
+	var duration int64
+
 	count := 0
 	testing := false
 	firstTime := true
@@ -224,9 +235,6 @@ func listenPort(port string, keepAlive bool, special bool, maxTries int) {
 	counted := 0
 	secondCount := 0
 	var durationEnd int64
-
-	pattern := "([^\u0000]*)"
-	re, _ := regexp.Compile(pattern)
 
 	portLen := bytes.Count([]byte(port), nil) - 1
 	addStarts := ""
@@ -251,10 +259,6 @@ func listenPort(port string, keepAlive bool, special bool, maxTries int) {
 
 	// 内-外网模式
 	if special {
-
-		var speed float64
-		var duration int64
-
 		// 等待握手
 		for {
 			data := make([]byte, PACKAGESIZE)
@@ -291,6 +295,8 @@ func listenPort(port string, keepAlive bool, special bool, maxTries int) {
 						content := make([]byte, PACKAGESIZE)
 						rand.Read(content)
 
+						var preTimeStamp int64
+
 						// start test
 						for endTime >= time.Now().UnixNano() {
 							if time.Now().UnixNano() >= nextTime {
@@ -301,7 +307,7 @@ func listenPort(port string, keepAlive bool, special bool, maxTries int) {
 									secondCount++
 								} else {
 									duration--
-									retResult(time.Now(), secondCount)
+									retJSONResult(&preTimeStamp, secondCount)
 									counted += secondCount
 									durationEnd += 1e9
 									secondCount = 0
@@ -310,7 +316,7 @@ func listenPort(port string, keepAlive bool, special bool, maxTries int) {
 						}
 
 						if duration >= 1 {
-							retResult(time.Now(), count-counted)
+							retJSONResult(&preTimeStamp, count-counted)
 						}
 						logPrint("Total send number is: %v \n", count)
 
@@ -336,6 +342,8 @@ func listenPort(port string, keepAlive bool, special bool, maxTries int) {
 
 	} else {
 		// 非内-外网模式
+		var preTimeStamp int64
+
 		for {
 			data := make([]byte, PACKAGESIZE)
 			conn.SetReadDeadline(time.Now().Add(time.Second * 2))
@@ -348,8 +356,12 @@ func listenPort(port string, keepAlive bool, special bool, maxTries int) {
 				}
 				logPrint("*")
 			} else {
-				if string(re.FindAll(data[:], 1)[0]) == "END" {
-					retResult(time.Now(), count-counted)
+				dataStr := removeSpace(data)
+
+				if strings.Index(dataStr, "END") != -1 {
+					if duration >= 1 {
+						retJSONResult(&preTimeStamp, count-counted)
+					}
 					_, err = conn.WriteToUDP([]byte("OK"), remoteAddr)
 					if keepAlive {
 						testing, firstTime = false, true
@@ -360,7 +372,13 @@ func listenPort(port string, keepAlive bool, special bool, maxTries int) {
 					}
 				}
 
-				if string(re.FindAll(data[:], 1)[0]) == "QOS" {
+				if strings.Index(dataStr, "QOS") != -1 {
+
+					params := strings.Split(dataStr, ",")
+					speed, err = strconv.ParseFloat(params[1], 64)
+					checkError(err)
+					duration, err = strconv.ParseInt(params[2], 10, 64)
+					checkError(err)
 
 					if testing == false {
 						_, err = conn.WriteToUDP([]byte("OK"), remoteAddr)
@@ -373,7 +391,7 @@ func listenPort(port string, keepAlive bool, special bool, maxTries int) {
 					}
 				}
 
-				if testing && (string(re.FindAll(data[:], 1)[0]) != "QOS") {
+				if testing && strings.Index(dataStr, "QOS") == -1 {
 					count++
 					if firstTime {
 						durationEnd = time.Now().UnixNano() + 1e9
@@ -382,7 +400,8 @@ func listenPort(port string, keepAlive bool, special bool, maxTries int) {
 					if durationEnd >= time.Now().UnixNano() {
 						secondCount++
 					} else {
-						retResult(time.Now(), secondCount)
+						duration--
+						retJSONResult(&preTimeStamp, secondCount)
 						counted += secondCount
 						durationEnd += 1e9
 						secondCount = 0
