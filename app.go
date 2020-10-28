@@ -46,6 +46,14 @@ func retJSONResult(preTimeStamp *int64, value int) {
 	*preTimeStamp = currentTime
 }
 
+func retJSONResultS(time *int64, baseTime int64, value int) {
+	if *time == 0 { // 如果时间不为零
+		*time = baseTime
+	}
+	fmt.Printf("{ \"timestamp\": \"%v\", \"value\": %v}\n", *time, value)
+	*time++
+}
+
 func checkError(err error) {
 	if err != nil {
 		x := fmt.Sprintf("%s", err)
@@ -86,7 +94,7 @@ func sendSignal(signal []byte, maxTries int, udpConn net.Conn) {
 
 func startClient(IP string, port string, speed float64, duration int64, special bool, maxTries int) {
 
-	specialStartSig := []byte(fmt.Sprintf("QOS,%v,%v", speed, duration))
+	specialStartSig := []byte(fmt.Sprintf("QOS,%v,%v,%v", speed, duration, time.Now().Unix()))
 	endSig := []byte("END")
 
 	portLen := bytes.Count([]byte(port+IP), nil)
@@ -226,6 +234,7 @@ func listenPort(port string, keepAlive bool, special bool, maxTries int) {
 
 	var speed float64
 	var duration int64
+	var clientStartTime int64
 
 	count := 0
 	testing := false
@@ -281,6 +290,8 @@ func listenPort(port string, keepAlive bool, special bool, maxTries int) {
 						checkError(err)
 						duration, err = strconv.ParseInt(params[2], 10, 64)
 						checkError(err)
+						clientStartTime, err = strconv.ParseInt(params[3], 10, 64)
+						checkError(err)
 
 						_, err = conn.WriteToUDP([]byte("OK"), remoteAddr)
 						checkError(err)
@@ -307,7 +318,7 @@ func listenPort(port string, keepAlive bool, special bool, maxTries int) {
 									secondCount++
 								} else {
 									duration--
-									retJSONResult(&preTimeStamp, secondCount)
+									retJSONResultS(&preTimeStamp, clientStartTime, secondCount)
 									counted += secondCount
 									durationEnd += 1e9
 									secondCount = 0
@@ -316,7 +327,7 @@ func listenPort(port string, keepAlive bool, special bool, maxTries int) {
 						}
 
 						if duration >= 1 {
-							retJSONResult(&preTimeStamp, count-counted)
+							retJSONResultS(&preTimeStamp, clientStartTime, count-counted)
 						}
 						logPrint("Total send number is: %v \n", count)
 
@@ -360,7 +371,7 @@ func listenPort(port string, keepAlive bool, special bool, maxTries int) {
 
 				if strings.Index(dataStr, "END") != -1 {
 					if duration >= 1 {
-						retJSONResult(&preTimeStamp, count-counted)
+						retJSONResultS(&preTimeStamp, clientStartTime, count-counted)
 					}
 					_, err = conn.WriteToUDP([]byte("OK"), remoteAddr)
 					if keepAlive {
@@ -378,6 +389,8 @@ func listenPort(port string, keepAlive bool, special bool, maxTries int) {
 					speed, err = strconv.ParseFloat(params[1], 64)
 					checkError(err)
 					duration, err = strconv.ParseInt(params[2], 10, 64)
+					checkError(err)
+					clientStartTime, err = strconv.ParseInt(params[3], 10, 64)
 					checkError(err)
 
 					if testing == false {
@@ -401,7 +414,7 @@ func listenPort(port string, keepAlive bool, special bool, maxTries int) {
 						secondCount++
 					} else {
 						duration--
-						retJSONResult(&preTimeStamp, secondCount)
+						retJSONResultS(&preTimeStamp, clientStartTime, secondCount)
 						counted += secondCount
 						durationEnd += 1e9
 						secondCount = 0
