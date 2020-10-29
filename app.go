@@ -415,7 +415,7 @@ func listenPort(port string, keepAlive bool, special bool, maxTries int) {
 						secondCount++
 					} else {
 						duration--
-						fmt.Println("总包", count, "耗时", time.Now().UnixNano()-preTime)
+						fmt.Println("总包", count, "耗时", (time.Now().UnixNano()-preTime)/1000000)
 						preTime = durationEnd
 						retJSONResultS(&preTimeStamp, clientStartTime, secondCount)
 						counted += secondCount
