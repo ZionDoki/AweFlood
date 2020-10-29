@@ -386,6 +386,7 @@ func listenPort(port string, keepAlive bool, special bool, maxTries int) {
 					}
 				} else if strings.Index(dataStr, "QOS") != -1 {
 
+					fmt.Println("执行了！")
 					params := strings.Split(dataStr, ",")
 					speed, err = strconv.ParseFloat(params[1], 64)
 					checkError(err)
