@@ -367,6 +367,8 @@ func listenPort(port string, keepAlive bool, special bool, maxTries int) {
 				listenTries--
 				if listenTries < 0 {
 					checkError(errors.New("Maxtries exceed"))
+				} else {
+					logPrintln(err)
 				}
 				logPrint("*")
 			} else {
