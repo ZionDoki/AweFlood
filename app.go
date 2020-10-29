@@ -356,7 +356,7 @@ func listenPort(port string, keepAlive bool, special bool, maxTries int) {
 		// 非内-外网模式
 		var preTimeStamp int64
 
-		var preTime int64
+		// var preTime int64
 
 		for {
 			data := make([]byte, PACKAGESIZE)
@@ -367,8 +367,6 @@ func listenPort(port string, keepAlive bool, special bool, maxTries int) {
 				listenTries--
 				if listenTries < 0 {
 					checkError(errors.New("Maxtries exceed"))
-				} else {
-					logPrintln(err)
 				}
 				logPrint("*")
 			} else {
@@ -388,7 +386,6 @@ func listenPort(port string, keepAlive bool, special bool, maxTries int) {
 					}
 				} else if strings.Index(dataStr, "QOS") != -1 {
 
-					fmt.Println("执行了！")
 					params := strings.Split(dataStr, ",")
 					speed, err = strconv.ParseFloat(params[1], 64)
 					checkError(err)
@@ -410,7 +407,7 @@ func listenPort(port string, keepAlive bool, special bool, maxTries int) {
 				} else if testing {
 					count++
 					if firstTime {
-						preTime = time.Now().UnixNano()
+						// preTime = time.Now().UnixNano()
 						durationEnd = time.Now().UnixNano() + 1e9
 						firstTime = false
 					}
@@ -418,8 +415,8 @@ func listenPort(port string, keepAlive bool, special bool, maxTries int) {
 						secondCount++
 					} else {
 						duration--
-						fmt.Println("总包", count, "耗时", (time.Now().UnixNano()-preTime)/1000000)
-						preTime = durationEnd
+						// fmt.Println("总包", count, "耗时", (time.Now().UnixNano()-preTime)/1000000)
+						// preTime = durationEnd
 						retJSONResultS(&preTimeStamp, clientStartTime, secondCount)
 						counted += secondCount
 						durationEnd += 1e9
