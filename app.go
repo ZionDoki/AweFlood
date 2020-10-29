@@ -356,6 +356,8 @@ func listenPort(port string, keepAlive bool, special bool, maxTries int) {
 		// 非内-外网模式
 		var preTimeStamp int64
 
+		var preTime int64
+
 		for {
 			data := make([]byte, PACKAGESIZE)
 			conn.SetReadDeadline(time.Now().Add(time.Second * 2))
@@ -405,6 +407,7 @@ func listenPort(port string, keepAlive bool, special bool, maxTries int) {
 				} else if testing {
 					count++
 					if firstTime {
+						preTime = time.Now().UnixNano()
 						durationEnd = time.Now().UnixNano() + 1e9
 						firstTime = false
 					}
@@ -412,7 +415,8 @@ func listenPort(port string, keepAlive bool, special bool, maxTries int) {
 						secondCount++
 					} else {
 						duration--
-						fmt.Println("总包", count)
+						fmt.Println("总包", count, "耗时", time.Now().UnixNano()-preTime)
+						preTime = durationEnd
 						retJSONResultS(&preTimeStamp, clientStartTime, secondCount)
 						counted += secondCount
 						durationEnd += 1e9
