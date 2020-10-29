@@ -313,6 +313,7 @@ func listenPort(port string, keepAlive bool, special bool, maxTries int) {
 							if time.Now().UnixNano() >= nextTime {
 								nextTime += int64(1e9 / speed)
 								conn.WriteToUDP(content, remoteAddr)
+								// 计算包总数
 								count++
 								if durationEnd >= time.Now().UnixNano() {
 									secondCount++
@@ -381,9 +382,7 @@ func listenPort(port string, keepAlive bool, special bool, maxTries int) {
 					} else {
 						break
 					}
-				}
-
-				if strings.Index(dataStr, "QOS") != -1 {
+				} else if strings.Index(dataStr, "QOS") != -1 {
 
 					params := strings.Split(dataStr, ",")
 					speed, err = strconv.ParseFloat(params[1], 64)
@@ -402,9 +401,8 @@ func listenPort(port string, keepAlive bool, special bool, maxTries int) {
 						_, err = conn.WriteToUDP([]byte("Testing Anothor Mission, Please Wait!"), remoteAddr)
 						checkError(err)
 					}
-				}
 
-				if testing && strings.Index(dataStr, "QOS") == -1 {
+				} else if testing {
 					count++
 					if firstTime {
 						durationEnd = time.Now().UnixNano() + 1e9
@@ -414,6 +412,7 @@ func listenPort(port string, keepAlive bool, special bool, maxTries int) {
 						secondCount++
 					} else {
 						duration--
+						fmt.Println("总包", count)
 						retJSONResultS(&preTimeStamp, clientStartTime, secondCount)
 						counted += secondCount
 						durationEnd += 1e9
