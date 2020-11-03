@@ -17,7 +17,7 @@ import (
 // 统一时间单位为秒，并且强制使所有结果的时间不会重复
 
 // PACKAGESIZE : A const of package size
-const PACKAGESIZE int = 1016
+const PACKAGESIZE int = 992
 
 var showLog bool
 
